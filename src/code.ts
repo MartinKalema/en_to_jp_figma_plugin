@@ -3,6 +3,11 @@ import { TranslationService } from './services/translation.service';
 import { NodeUtil } from './utils/node.util';
 import { BATCH_SIZE } from './constants';
 
+// Add custom error types
+interface TranslationError extends Error {
+  message: string;
+}
+
 figma.showUI(__html__, { 
   width: 300, 
   height: 400,
@@ -33,9 +38,10 @@ async function translateNode(
       } else {
         figma.notify(`Failed to translate text: ${translation.error}`, { error: true });
       }
-    } catch (error) {
-      console.error(`Error translating node: ${error}`);
-      figma.notify(`Error translating text: ${error.message}`, { error: true });
+    } catch (error: unknown) {
+      const err = error as TranslationError;
+      console.error(`Error translating node: ${err.message}`);
+      figma.notify(`Error translating text: ${err.message}`, { error: true });
     }
   }
   else if ('children' in clone) {
@@ -106,9 +112,10 @@ async function duplicateAndTranslate(
     figma.ui.postMessage({ type: 'translation-complete' });
     
     return parentFrame;
-  } catch (error) {
-    console.error('Translation error:', error);
-    figma.notify(`Translation failed: ${error.message}`, { error: true });
+  } catch (error: unknown) {
+    const err = error as TranslationError;
+    console.error('Translation error:', err.message);
+    figma.notify(`Translation failed: ${err.message}`, { error: true });
     figma.ui.postMessage({ type: 'translation-complete' });
     throw error;
   }
@@ -140,9 +147,10 @@ figma.ui.onmessage = async (msg) => {
     try {
       const translationService = new TranslationService(settings.apiKey);
       await duplicateAndTranslate(selection, translationService);
-    } catch (error) {
-      console.error('Plugin error:', error);
-      figma.notify('Error: ' + error.message, { error: true });
+    } catch (error: unknown) {
+      const err = error as TranslationError;
+      console.error('Plugin error:', err.message);
+      figma.notify('Error: ' + err.message, { error: true });
       figma.ui.postMessage({ type: 'translation-complete' });
     }
   }
