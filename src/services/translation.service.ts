@@ -1,64 +1,58 @@
-import { TranslationResponse } from '@/types';
-import { withRetry } from '@/utils/retry.util';
-import { 
-  OPENAI_API_URL, 
-  DEFAULT_MODEL, 
-  SYSTEM_PROMPT 
-} from '@/constants';
+import { BaseError, Errors } from '../utils/errors';
 
 export class TranslationService {
-  private apiKey: string;
-
-  constructor(apiKey: string) {
-    this.apiKey = apiKey;
+  constructor(private apiKey: string) {
+    if (!apiKey) {
+      throw Errors.validation('API key is required');
+    }
   }
 
-  async translate(text: string): Promise<TranslationResponse> {
+  async translate(text: string): Promise<{ success: boolean; text: string }> {
     try {
-      const response = await withRetry(() => this.callGPT4API(text));
+      if (!text.trim()) {
+        throw Errors.validation('Text to translate cannot be empty');
+      }
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`
+        },
+        body: JSON.stringify({
+          model: "gpt-4-0125-preview",
+          messages: [
+            {
+              "role": "system",
+              "content": "You are a professional English to Japanese translator."
+            },
+            {
+              "role": "user",
+              "content": text
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw Errors.api(
+          errorData.error?.message || 'Translation API request failed',
+          response.status
+        );
+      }
+
+      const data = await response.json();
       return {
         success: true,
-        text: response,
+        text: data.choices[0].message.content.trim()
       };
-    } catch (error) {
-      return {
-        success: false,
-        text: '',
-        error: error.message,
-      };
+
+    } catch (error: unknown) {
+      if (error instanceof BaseError) {
+        throw error;
+      }
+      throw Errors.translation('Translation failed', error);
     }
-  }
-
-  private async callGPT4API(text: string): Promise<string> {
-    const response = await fetch(OPENAI_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`
-      },
-      body: JSON.stringify({
-        model: DEFAULT_MODEL,
-        messages: [
-          {
-            "role": "system",
-            "content": SYSTEM_PROMPT
-          },
-          {
-            "role": "user",
-            "content": text
-          }
-        ],
-        temperature: 0.1,
-        max_tokens: 1000
-      })
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message || 'Translation failed');
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content.trim();
   }
 }

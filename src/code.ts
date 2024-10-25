@@ -1,12 +1,7 @@
 import { StorageService } from './services/storage.service';
 import { TranslationService } from './services/translation.service';
 import { NodeUtil } from './utils/node.util';
-import { BATCH_SIZE } from './constants';
-
-// Add custom error types
-interface TranslationError extends Error {
-  message: string;
-}
+import { handleError, Errors, isValidationError } from './utils/errors';
 
 figma.showUI(__html__, { 
   width: 300, 
@@ -15,52 +10,29 @@ figma.showUI(__html__, {
 });
 
 async function translateNode(
-  node: SceneNode, 
+  node: SceneNode,
   translationService: TranslationService
 ): Promise<SceneNode> {
   const clone = node.clone();
-  
+
   if (clone.type === 'TEXT') {
     try {
       if (!clone.characters.trim()) {
-        return clone;
+        throw Errors.validation('Empty text node found');
       }
-      
+
       const translation = await translationService.translate(clone.characters);
-      
-      if (translation.success) {
-        await figma.loadFontAsync(clone.fontName as FontName);
-        clone.characters = translation.text;
-        
-        if (clone.textAutoResize !== "NONE") {
-          clone.textAutoResize = "WIDTH_AND_HEIGHT";
-        }
-      } else {
-        figma.notify(`Failed to translate text: ${translation.error}`, { error: true });
+      await figma.loadFontAsync(clone.fontName as FontName);
+      clone.characters = translation.text;
+
+      if (clone.textAutoResize !== "NONE") {
+        clone.textAutoResize = "WIDTH_AND_HEIGHT";
       }
     } catch (error: unknown) {
-      const err = error as TranslationError;
-      console.error(`Error translating node: ${err.message}`);
-      figma.notify(`Error translating text: ${err.message}`, { error: true });
+      handleError(error);
     }
   }
-  else if ('children' in clone) {
-    const translatedChildren = await NodeUtil.processNodeBatch(
-      Array.from(clone.children),
-      async (child) => await translateNode(child, translationService)
-    );
-    
-    clone.children.forEach((child, index) => {
-      if (translatedChildren[index]) {
-        child.remove();
-      }
-    });
-    
-    translatedChildren.forEach((child) => {
-      clone.appendChild(child);
-    });
-  }
-  
+
   return clone;
 }
 
@@ -113,45 +85,45 @@ async function duplicateAndTranslate(
     
     return parentFrame;
   } catch (error: unknown) {
-    const err = error as TranslationError;
-    console.error('Translation error:', err.message);
-    figma.notify(`Translation failed: ${err.message}`, { error: true });
+    handleError(error);
     figma.ui.postMessage({ type: 'translation-complete' });
-    throw error;
+    throw error; // Re-throw to be handled by the caller
   }
 }
 
 figma.ui.onmessage = async (msg) => {
   if (msg.type === 'save-settings') {
-    await StorageService.saveSettings({ apiKey: msg.apiKey });
-    figma.notify('API key saved! ✨');
+    try {
+      await StorageService.saveSettings({ apiKey: msg.apiKey });
+      figma.notify('API key saved! ✨');
+    } catch (error: unknown) {
+      handleError(error);
+    }
   }
 
   if (msg.type === 'translate-selected') {
-    const settings = await StorageService.getSettings();
-    
-    if (!settings?.apiKey) {
-      figma.notify('Please enter your OpenAI API key first', { error: true });
-      figma.ui.postMessage({ type: 'translation-complete' });
-      return;
-    }
-
-    const selection = figma.currentPage.selection;
-    
-    if (selection.length === 0) {
-      figma.notify('Please select elements to translate');
-      figma.ui.postMessage({ type: 'translation-complete' });
-      return;
-    }
-    
     try {
+      const settings = await StorageService.getSettings();
+      
+      if (!settings?.apiKey) {
+        throw Errors.validation('Please enter your OpenAI API key first');
+      }
+
+      const selection = figma.currentPage.selection;
+      
+      if (selection.length === 0) {
+        throw Errors.validation('Please select elements to translate');
+      }
+      
       const translationService = new TranslationService(settings.apiKey);
       await duplicateAndTranslate(selection, translationService);
+
     } catch (error: unknown) {
-      const err = error as TranslationError;
-      console.error('Plugin error:', err.message);
-      figma.notify('Error: ' + err.message, { error: true });
-      figma.ui.postMessage({ type: 'translation-complete' });
+      handleError(error);
+      // Only send translation-complete if it's not a validation error
+      if (!isValidationError(error)) {
+        figma.ui.postMessage({ type: 'translation-complete' });
+      }
     }
   }
 
