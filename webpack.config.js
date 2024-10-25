@@ -1,4 +1,7 @@
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const TerserPlugin = require('terser-webpack-plugin');
+const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
+const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 const path = require('path');
 
 module.exports = (env, argv) => ({
@@ -13,12 +16,29 @@ module.exports = (env, argv) => ({
       {
         test: /\.tsx?$/,
         use: 'ts-loader',
+        options: {
+           compilerOptions: {
+           sourceMap: argv.mode !== 'production'
+          }
+        },
         exclude: /node_modules/,
       },
       {
         test: /\.css$/,
-        use: ['style-loader', 'css-loader'],
+        use: [
+          'style-loader',
+          {
+            loader: 'css-loader',
+            options: {
+              sourceMap: argv.mode !== 'production'
+            }
+          }
+        ],
       },
+      {
+        test: /\.(png|jpg|gif|svg)$/,
+        type: 'asset/resource'
+      }
     ],
   },
   resolve: {
@@ -28,10 +48,11 @@ module.exports = (env, argv) => ({
     },
   },
   output: {
-    filename: '[name].js',
+    filename: argv.mode === 'production' ? '[name].[contenthash].js' : '[name].js',
     path: path.resolve(__dirname, 'dist'),
   },
   plugins: [
+    new CleanWebpackPlugin(),
     new HtmlWebpackPlugin({
       template: './src/ui.html',
       filename: 'ui.html',
@@ -39,4 +60,11 @@ module.exports = (env, argv) => ({
       inject: 'body',
     }),
   ],
+  optimization: {
+    minimize: argv.mode === 'production',
+    minimizer: [
+      new TerserPlugin(),
+      new CssMinimizerPlugin(),
+    ],
+  },
 });
