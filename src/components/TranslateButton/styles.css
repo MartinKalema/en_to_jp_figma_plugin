@@ -1,0 +1,26 @@
+.translate-button {
+    width: 100%;
+    padding: 8px;
+    margin: 8px 0;
+    background: #18A0FB;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  .translate-button:hover {
+    background: #1493E8;
+  }
+  
+  .translate-button:disabled {
+    background: #CCE5F9;
+    cursor: not-allowed;
+  }
+  
+  .info-text {
+    font-size: 12px;
+    color: #666;
+    margin: 12px 0;
+  }
+  

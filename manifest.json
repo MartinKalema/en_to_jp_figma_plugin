@@ -1,0 +1,11 @@
+{
+    "name": "GPT-4 English to Japanese Translator",
+    "id": "gpt4-english-japanese-translator",
+    "api": "1.0.0",
+    "main": "code.js",
+    "ui": "ui.html",
+    "editorType": ["figma"],
+    "networkAccess": {
+      "allowedDomains": ["api.openai.com"]
+    }
+  }
